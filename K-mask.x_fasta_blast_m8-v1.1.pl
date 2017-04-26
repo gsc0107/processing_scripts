@@ -1,0 +1,124 @@
+#!/usr/bin/perl -w
+# Author : Ksenia Krasileva
+# Date : Jan 03, 2013
+# Description:
+
+use strict;
+use warnings;
+use Getopt::Long;
+
+my ($fasta, $blast, $fileout);
+
+GetOptions(
+       'b|blast:s'        => \$blast,
+       'f|fasta:s'    => \$fasta,                                             
+       'o|output:s' => \$fileout,
+#       'h|help:s'    => die $usage,                                            
+    );
+
+my $usage="
+--------------------------------------------------------------------
+usage: perl script.pl -b <blastfile> -fa <fastafile> -o <outputfile>
+
+required options:
+
+-b or --blast:   blast file in m8 tabular format
+-f or --fasta:  fasta file used as input to run blast
+-o or --output:  name of the output file  
+-------------------------------------------------------------------- 
+";
+
+open (FILEOUT1, ">", $fileout) or die "ERROR: Cannot open output file\n$usage";
+
+#open fasta, store headers and sequence
+
+my %sequence;
+my %header; 
+my @query_info;
+my $id;
+
+open (FILE1, "<", $fasta) or die "ERROR: Cannot open fasta file\n$usage";
+
+while ( my $line = <FILE1> ){
+    
+    chomp $line; 
+
+    if ($line=~ m/\>/)	{
+
+	@query_info = split (/\s/, $line);
+
+	$id = shift(@query_info);
+
+	$id =~ s/\>//;
+	$id =~ s/\,//;
+
+	$header{$id} = join(" ", @query_info);
+    }
+
+    elsif($sequence{$id}){
+
+	$sequence{$id} = $sequence{$id} . $line;
+    }
+
+    else{
+
+	$sequence{$id} = $line;
+    }
+
+}
+
+close FILE1;
+
+my ($query, $subject, $max_id, $aln_length, $mm, $gap, $q_start, $q_end, $s_start, $s_end, $evalue, $bit_score);
+my $mask = "x";
+my $pos;
+my $line;
+my %newheader;
+
+open (FILE2, "<", $blast) or die "cannot open blast file\n$usage";
+
+$line = <FILE2>;
+
+while ( $line = <FILE2> ){
+
+    chomp $line; 
+    
+    ($query, $subject, $max_id, $aln_length, $mm, $gap, $q_start, $q_end, $s_start, $s_end, $evalue, $bit_score) = split (/\t/, $line);
+	
+    $query =~ s/\,//; 
+    $query =~ s/ .*//;
+
+# masking the sequence
+
+    my ($mask_start, $mask_end) = ($q_start, $q_end);
+
+    #if query is aligning on negative strand, so aln start is > aln end
+
+    if ($q_start>$q_end){
+
+	($mask_start, $mask_end) = ($q_end, $q_start);
+    }
+    
+    for ($pos = $mask_start-1; $pos < $mask_end; $pos++){
+
+	$sequence{$query} =~ s/^(.{$pos})(.)(.*)/$1$mask$3/;
+    }
+
+    $newheader{$query} = ">". $query . " " . $header{$query} . "masked based on " . $subject . ",";
+
+}
+
+close FILE2;
+
+my $key;
+
+foreach $key (keys %sequence){
+
+	if (defined($newheader{$key})){
+	print FILEOUT1 $newheader{$key}, "\n", $sequence{$key}, "\n";
+	}
+	
+	else{
+	print FILEOUT1 ">", $key, " ", $header{$key}, "\n", $sequence{$key}, "\n";
+	}
+}
