@@ -1,0 +1,103 @@
+#!/usr/bin/perl -w
+
+my $VERSION="1.0";
+my $AUTHOR="Ksenia Krasileva";
+my $EMAIL="krasileva [at] ucdavis.edu";
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Bio::SeqIO;
+
+my ($fasta, $blast, $fileout);
+my $usage=usage();
+
+GetOptions(
+       'b|blast:s'        => \$blast,
+       'f|fasta:s'    => \$fasta,                                             
+       'o|output:s' => \$fileout,
+#       'h|help:s'    => die $usage,                                            
+    ) or die $usage;
+
+die "ERROR: No input blast file specified\n$usage" unless defined($blast);
+die "ERROR: No output file specified\n$usage" unless defined($fileout);
+die "ERROR: No fasta file specified\n$usage" unless defined($fasta);
+
+
+open (FILEOUT1, ">", $fileout);
+
+#load fasta, store headers and sequence
+
+my $inseq = Bio::SeqIO->new(
+                             -file   => $fasta,
+                             -format => 'Fasta',
+    );
+
+
+#Query	Subject	E-value	Max_ID	Q_St	Q_en	S_st	S_en	Qcov	Scov
+
+my ($query, $subject, $max_id, $aln_length, $mm, $gap, $q_start, $q_end, $s_start, $s_end, $evalue, $bit_score);
+my $mask = "x";
+my $pos;
+my $line;
+my %newheader;
+
+open (FILE2, "<", $blast) or die "cannot open this file";
+
+$line = <FILE2>;
+
+while ( $line = <FILE2> ){
+
+    chomp $line; 
+    
+    ($query, $subject, $max_id, $aln_length, $mm, $gap, $q_start, $q_end, $s_start, $s_end, $evalue, $bit_score) = split (/\t/, $line);
+	
+    $query =~ s/\,//; 
+    $query =~ s/ .*//;
+
+# masking the sequence
+
+    for ($pos = $q_start-1; $pos < $q_end; $pos++){
+
+	$sequence{$query} =~ s/^(.{$pos})(.)(.*)/$1$mask$3/;
+    }
+
+    $newheader{$query} = ">". $query . " " . $header{$query} . "masked based on " . $subject . ",";
+
+}
+
+close FILE2;
+
+my $key;
+
+foreach $key (keys %sequence){
+
+	if (defined($newheader{$key})){
+	print FILEOUT1 $newheader{$key}, "\n", $sequence{$key}, "\n";
+	}
+	
+	else{
+	print FILEOUT1 ">", $key, " ", $header{$key}, "\n", $sequence{$key}, "\n";
+	}
+}
+
+sub usage {
+
+    my $usage =<<END;
+
+    Version $VERSION
+
+    By $AUTHOR ( $EMAIL )
+
+Usage: perl script.pl [options]
+
+Options
+
+-b | --blast [file]       blast output file in tabular format (BLAST+ m6, legacy BLAST m6)
+-o | --output [file]      output masked fasta file
+-f | --fasta [file]       input fasta file
+
+END
+
+return $usage;
+}
